@@ -22,7 +22,22 @@ API_KEY = os.environ.get("AI_API_KEY", "")
 NEGATIVE_WORDS = ["плохо", "ужасно", "недоволен", "кошмар", "отвратительно", "грубо", "долго", "обман", "хамство"]
 FIXED_NEGATIVE = "Здравствуйте! Нам очень жаль, что визит оставил неприятные впечатления. Мы уже разбираемся с вашей ситуацией. Пожалуйста, свяжитесь с нами удобным для вас способом."
 
-# --- ИИ для позитива/нейтрала ---
+def send_telegram(contact, rtype):
+    # Токен и ID вписаны напрямую, чтобы обойти глюки с секретами
+    token = "8975961612:AAFafv9n9wpX9cXA5PxH7Kdl5zfykMhv_Iw"
+    chat_id = "1579504425"
+    
+    text = f"📩 Новая заявка!\nКонтакт: {contact}\nТип: {rtype}"
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except:
+        return False
+
 def get_ai_response(review):
     if not API_KEY:
         return "Спасибо за ваш отзыв! Нам важно ваше мнение."
@@ -45,15 +60,10 @@ def get_ai_response(review):
         return "Спасибо за ваш отзыв!"
 
 def generate_response(review):
-    print(f"Отзыв: {review}")
     if any(w in review.lower() for w in NEGATIVE_WORDS):
-        print(f"Ответ: {FIXED_NEGATIVE}")
         return FIXED_NEGATIVE
-    answer = get_ai_response(review)
-    print(f"Ответ: {answer}")
-    return answer
+    return get_ai_response(review)
 
-# --- Сохранение заявок ---
 def save_lead(contact, rtype):
     new = not os.path.exists(csv_path)
     with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
@@ -68,6 +78,8 @@ st.caption("Для автосервисов, салонов и кафе")
 
 if "answer" not in st.session_state:
     st.session_state.answer = ""
+if "lead_sent" not in st.session_state:
+    st.session_state.lead_sent = False
 
 review = st.text_area("Вставьте текст отзыва", height=150, placeholder="Например: «Долго ждал, мастер грубил»")
 
@@ -80,12 +92,20 @@ if st.session_state.answer:
 
     st.markdown("---")
     st.markdown("**Хотите, чтобы ИИ отвечал на все новые отзывы автоматически?**")
-    st.markdown("Оформите предзаказ за **490 ₽/мес**. Первые 10 человек получат 2 месяца бесплатно.")
+    st.markdown("Оформите предзаказ за **490 ₽/мес**.")
     
-    contact = st.text_input("Ваш Telegram или WhatsApp")
-    if st.button("Отправить заявку"):
-        if contact.strip():
-            save_lead(contact.strip(), "Негативный" if any(w in review.lower() for w in NEGATIVE_WORDS) else "Другой")
-            st.success("✅ Заявка сохранена!")
-        else:
-            st.error("Введите контакт")
+    if not st.session_state.lead_sent:
+        contact = st.text_input("Ваш Telegram или WhatsApp")
+        if st.button("Отправить заявку", type="primary"):
+            if contact.strip():
+                save_lead(contact.strip(), "Заявка")
+                if send_telegram(contact.strip(), "Негатив" if any(w in review.lower() for w in NEGATIVE_WORDS) else "Другой"):
+                    st.session_state.lead_sent = True
+                    st.rerun()
+                else:
+                    st.error("⚠️ Ошибка Telegram. Проверьте нажатие /start в боте.")
+            else:
+                st.error("Введите контакт")
+
+    if st.session_state.lead_sent:
+        st.success("✅ Заявка принята! Мы свяжемся с вами.")
